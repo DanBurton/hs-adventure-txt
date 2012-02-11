@@ -11,6 +11,9 @@ import Control.Monad
 import Text.Printf
 import Text.Parsec
 
+import System.Environment
+
+
 type TextAdventure = Map String TAFunc
 
 data TAFunc = TAFunc
@@ -34,6 +37,10 @@ loadAdventure fname = do
   case parse advP fname advText of
     Left err -> print err
     Right advList -> runAdventure $ fromListBy name advList
+
+main = do
+  [fname] <- getArgs
+  loadAdventure fname
 
 advP = many1 funcP
 
