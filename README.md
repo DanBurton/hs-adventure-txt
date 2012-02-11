@@ -6,6 +6,7 @@ http://github.com/tech-no-crat/Cadventure-txt
 
 And by simple, I mean *very* simple.
 Currently, comments are not supported, = is not supported,
+a single line of output (starting with >) is mandatory for every function,
 and whitespace has to be very precise.
 
 Patches are welcome;
