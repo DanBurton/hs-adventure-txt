@@ -5,7 +5,7 @@ import Data.Map (Map)
 import Data.Maybe
 import Data.List
 
-import Control.Applicative hiding (many)
+import Control.Applicative hiding (many, (<|>))
 import Control.Monad
 
 import Text.Printf
@@ -14,21 +14,26 @@ import Text.Parsec
 import System.Environment
 
 
+spaces' = skipMany $ oneOf " \t"
+
 type TextAdventure = Map String TAFunc
+
+data TAFuncBody = TheEnd
+                | FuncCall String
+                | Opts [TAOpt]
+                deriving (Eq, Show)
 
 data TAFunc = TAFunc
   { name :: String
   , message :: Maybe String
-  , result :: Maybe (Either String [TAOpt])
-  }
-  deriving (Eq, Show)
-  
+  , result :: TAFuncBody
+  } deriving (Eq, Show)
+
 data TAOpt = TAOpt
   { key :: String
   , desc :: String
   , funcName :: String
-  }
-  deriving (Eq, Show)
+  } deriving (Eq, Show)
 
 fromListBy f = Map.fromList . map (\x -> (f x, x))
 
@@ -38,6 +43,13 @@ loadAdventure fname = do
     Left err -> print err
     Right advList -> runAdventure $ fromListBy name advList
 
+spacesAndComments = many (skipMany1 space <|> commentP)
+
+commentP = do
+  noneOf " \t\n@-=>"
+  manyTill anyChar newline
+  return ()
+
 main = do
   [fname] <- getArgs
   loadAdventure fname
@@ -45,41 +57,53 @@ main = do
 advP = many1 funcP
 
 funcP = do
+  spacesAndComments
   n <- nameP
-  m <- messageP
+  spacesAndComments
+  m <- optionMaybe messageP
+  spacesAndComments
   r <- resultP
-  newline
-  return $ TAFunc n (Just m) (Just $ Right r)
+  return $ TAFunc n m r
 
 funcNameP = many1 $ choice [upper, char '_']
 
 nameP = do
   char '@'
-  space
+  spaces'
   n <- funcNameP
+  spaces'
   newline
   return n
 
 messageP = do
   char '>'
-  space
+  spaces'
   m <- manyTill anyChar newline
   return m
 
-resultP = many taOptP
+resultP = option TheEnd ((Opts <$> many1 taOptP) <|> funcCallP)
+
 taOptP = do  
   char '-'
-  space
+  spaces'
   k <- upper
-  space
+  spaces'
   char '-'
-  space
-  d <- manyTill anyChar (try $ string " -")
-  space
+  spaces'
+  d <- manyTill anyChar (try $ spaces' >> char '-')
+  spaces'
   f <- funcNameP
+  spaces'
   newline
   return $ TAOpt [k] d f
 
+funcCallP = do
+  char '='
+  spaces'
+  f <- funcNameP
+  spaces'
+  newline
+  return $ FuncCall f
 
 runAdventure :: TextAdventure -> IO ()
 runAdventure adv = loop "START"
@@ -94,10 +118,10 @@ runAdventure adv = loop "START"
         Just (TAFunc n m r) -> do
           when (isJust m) $ putStrLn (fromJust m)
           case r of
-            Nothing -> return Nothing
-            Just (Left f') -> return $ Just f'
-            Just (Right []) -> return Nothing
-            Just (Right opts) -> Just <$> getOpt opts
+            TheEnd      -> return Nothing
+            FuncCall f' -> return $ Just f'
+            Opts []     -> return Nothing
+            Opts opts   -> Just <$> getOpt opts
         Nothing -> error "Malformed adventure definition. :("
     askRestart = do
       putStrLn "Your adventure has ended. Would you like to restart? (Y/N)"
